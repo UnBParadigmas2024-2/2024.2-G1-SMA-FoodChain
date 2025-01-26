@@ -42,8 +42,55 @@ public class HerbivoreAgent extends Agent {
             e.printStackTrace();
         }
 
+        // Adiciona comportamento para mover, caçar e consumir energia
         addBehaviour(new TickerBehaviour(this, 1000) {
             protected void onTick() {
+                boolean foundFood = false;
+
+                // Tenta encontrar plantas
+                try {
+                    // Procura por plantas
+                    DFAgentDescription template = new DFAgentDescription();
+                    ServiceDescription sd = new ServiceDescription();
+                    sd.setType("plant");
+                    template.addServices(sd);
+                    DFAgentDescription[] result = DFService.search(myAgent, template);
+
+                    // Encontra a planta mais próxima dentro do campo de visão
+                    double closestDistance = Double.MAX_VALUE;
+                    for (DFAgentDescription plant : result) {
+                        AID plantAID = plant.getName();
+                        ACLMessage posRequest = new ACLMessage(ACLMessage.REQUEST);
+                        posRequest.addReceiver(plantAID);
+                        posRequest.setContent("getPosition");
+                        send(posRequest);
+
+                        // Aguarda resposta
+                        ACLMessage reply = blockingReceive();
+                        if (reply != null && reply.getContent() != null) {
+                            try {
+                                String[] coords = reply.getContent().split(",");
+                                if (coords.length == 2) {
+                                    Position plantPos = new Position(
+                                            Double.parseDouble(coords[0].trim()),
+                                            Double.parseDouble(coords[1].trim()));
+                                    double distance = position.distanceTo(plantPos);
+                                    // Considera apenas plantas dentro do campo de visão
+                                    if (distance < closestDistance && isInHuntingRadius(plantPos)) {
+                                        closestDistance = distance;
+                                    }
+                                }
+                            } catch (NumberFormatException e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    }
+
+                    // TODO: Implementar consumo de plantas
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
                 // Consome energia
                 energy -= ENERGY_CONSUMPTION;
                 if (energy <= 0) {
