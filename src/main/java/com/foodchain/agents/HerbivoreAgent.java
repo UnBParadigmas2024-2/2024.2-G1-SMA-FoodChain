@@ -10,11 +10,7 @@ import jade.domain.DFService;
 import jade.domain.FIPAException;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
-import jade.domain.FIPAException;
-import jade.core.AID;
 import jade.lang.acl.ACLMessage;
-import com.foodchain.SimulationLauncher;
-import jade.core.behaviours.CyclicBehaviour;
 
 public class HerbivoreAgent extends Agent {
     private Position position;
@@ -23,13 +19,44 @@ public class HerbivoreAgent extends Agent {
     private static final int ENERGY_CONSUMPTION = 3;
     private static final double HUNTING_RADIUS = 10.0;
     private static final int DIRECTION_CHANGE_THRESHOLD = 5; // Ticks sem encontrar comida antes de mudar direção
+    private static final double FOV_ANGLE = Math.PI / 2; // Campo de visão de 90 graus
+    private static final double FOV_RANGE = HUNTING_RADIUS; // Mesmo alcance que o raio de caça
+    private static final double SPATIAL_AWARENESS_RADIUS = 7.5; // Reduzido de 15.0
+    private static final int FEEDING_COOLDOWN = 5; // Aumentado de 3 para 5 ticks
+    private static final double MIN_DISTANCE_TO_LAST_PLANT = 15.0; // Distância mínima antes de se alimentar da mesma
+                                                                   // planta novamente
 
     // Variáveis de comportamento de busca
     private int ticksWithoutFood = 0;
     private double facingDirection = Math.random() * 2 * Math.PI; // Direção para onde o herbívoro está olhando
+    private int feedingCooldown = 0; // Contador de tempo de espera para alimentação
+    private Position lastFeedingPosition = null; // Última posição onde se alimentou
 
-    private boolean isInHuntingRadius(Position target) {
-        return position.distanceTo(target) <= HUNTING_RADIUS;
+    // Método auxiliar para verificar se um ponto está dentro do alcance de detecção
+    // (cone de visão ou raio de percepção)
+    private boolean isInFieldOfView(Position target) {
+        double distance = position.distanceTo(target);
+
+        // Primeiro verifica se o alvo está dentro do raio de percepção
+        if (distance <= SPATIAL_AWARENESS_RADIUS) {
+            // Se o alvo estiver muito próximo, vira para encará-lo
+            double dx = target.x - position.x;
+            double dy = target.y - position.y;
+            facingDirection = Math.atan2(dy, dx);
+            return true;
+        }
+
+        // Se não estiver no raio de percepção, verifica se está no cone de visão
+        if (distance > FOV_RANGE) {
+            return false;
+        }
+
+        // Calcula o ângulo entre a direção atual e o alvo
+        double dx = target.x - position.x;
+        double dy = target.y - position.y;
+        double angleToTarget = Math.atan2(dy, dx);
+
+        return angleToTarget <= FOV_ANGLE / 2;
     }
 
     @Override
@@ -61,7 +88,7 @@ public class HerbivoreAgent extends Agent {
             protected void onTick() {
                 boolean foundFood = false;
 
-                // Tenta encontrar plantas
+                // Tenta encontrar e comer plantas
                 try {
                     // Procura por plantas
                     DFAgentDescription template = new DFAgentDescription();
