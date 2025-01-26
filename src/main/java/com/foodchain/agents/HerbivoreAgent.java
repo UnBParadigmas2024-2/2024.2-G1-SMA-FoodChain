@@ -101,6 +101,34 @@ public class HerbivoreAgent extends Agent {
                     e.printStackTrace();
                 }
 
+                // Se não encontrou planta ou não está com fome, move na direção atual
+                if (!foundFood) {
+                    ticksWithoutFood++;
+
+                    // Muda direção se ficar muito tempo sem encontrar comida
+                    if (ticksWithoutFood >= DIRECTION_CHANGE_THRESHOLD) {
+                        // Quando a energia está baixa, faz mudanças menores de direção
+                        if (energy < 30) {
+                            facingDirection += (Math.random() - 0.5) * Math.PI / 2; // Muda até ±45 graus
+                        } else {
+                            facingDirection = Math.random() * 2 * Math.PI; // Direção completamente aleatória
+                        }
+                        ticksWithoutFood = 0;
+                    }
+
+                    // Move na direção que está olhando
+                    double moveDistance = MOVEMENT_RANGE;
+                    // Move mais rápido quando a energia está baixa
+                    if (energy < 30) {
+                        moveDistance *= 1.3; // 30% mais rápido quando desesperado por comida
+                    }
+
+                    double newX = position.x + (moveDistance * Math.cos(facingDirection));
+                    double newY = position.y + (moveDistance * Math.sin(facingDirection));
+
+                    position = new Position(newX, newY);
+                }
+
                 // Consome energia
                 energy -= ENERGY_CONSUMPTION;
                 if (energy <= 0) {
