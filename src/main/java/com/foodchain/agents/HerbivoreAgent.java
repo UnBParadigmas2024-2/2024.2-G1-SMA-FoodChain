@@ -2,6 +2,7 @@ package com.foodchain.agents;
 
 import com.foodchain.SimulationLauncher;
 
+import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.CyclicBehaviour;
 import jade.core.behaviours.TickerBehaviour;
@@ -14,6 +15,13 @@ import jade.lang.acl.ACLMessage;
 public class HerbivoreAgent extends Agent {
     private Position position;
     private int energy = 100;
+    private static final double MOVEMENT_RANGE = 5.0;
+    private static final int ENERGY_CONSUMPTION = 3;
+    private static final double HUNTING_RADIUS = 10.0;
+    private static final int DIRECTION_CHANGE_THRESHOLD = 5; // Ticks sem encontrar comida antes de mudar direção
+
+    // Variáveis de comportamento de busca
+    private int ticksWithoutFood = 0;
     private double facingDirection = Math.random() * 2 * Math.PI; // Direção para onde o herbívoro está olhando
 
     private boolean isInHuntingRadius(Position target) {
@@ -107,7 +115,6 @@ public class HerbivoreAgent extends Agent {
                 }
 
                 // Atualiza GUI com nova posição e energia
-                // TODO: Atualizar posição
                 SimulationLauncher.updateAgentInfo(getLocalName(), position, energy, facingDirection);
             }
         });
