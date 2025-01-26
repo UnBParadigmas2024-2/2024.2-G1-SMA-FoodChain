@@ -61,6 +61,92 @@ public class SimulationGUI extends JFrame {
         setVisible(true);
     }
 
+    private void createControlPanel() {
+        controlPanel = new JPanel();
+        controlPanel.setPreferredSize(new Dimension(200, WINDOW_HEIGHT));
+        controlPanel.setBorder(BorderFactory.createTitledBorder("Estatísticas & Legenda"));
+        controlPanel.setLayout(new BoxLayout(controlPanel, BoxLayout.Y_AXIS));
+
+        // Adiciona estatísticas da população
+        JPanel statsPanel = new JPanel();
+        statsPanel.setLayout(new BoxLayout(statsPanel, BoxLayout.Y_AXIS));
+        statsPanel.setBorder(BorderFactory.createTitledBorder("Estatísticas da População"));
+
+        herbivoreStatsLabel = new JLabel("<html><b>Herbívoros</b><br>Vivos: 0<br>Total de Mortes: 0</html>");
+        carnivoreStatsLabel = new JLabel("<html><b>Carnívoros</b><br>Vivos: 0<br>Total de Mortes: 0</html>");
+
+        statsPanel.add(herbivoreStatsLabel);
+        statsPanel.add(Box.createVerticalStrut(10));
+        statsPanel.add(carnivoreStatsLabel);
+
+        controlPanel.add(statsPanel);
+        controlPanel.add(Box.createVerticalStrut(20));
+
+        // Adiciona itens da legenda
+        JPanel legendPanel = new JPanel();
+        legendPanel.setLayout(new BoxLayout(legendPanel, BoxLayout.Y_AXIS));
+        legendPanel.setBorder(BorderFactory.createTitledBorder("Legenda"));
+
+        addLegendItem(legendPanel, "Plantas", new Color(34, 139, 34), "Estáticas, geram energia");
+        addLegendItem(legendPanel, "Herbívoros", new Color(30, 144, 255), "Caçam plantas");
+        addLegendItem(legendPanel, "Carnívoros", new Color(220, 20, 60), "Caçam herbívoros");
+
+        controlPanel.add(legendPanel);
+    }
+
+    private void addLegendItem(JPanel panel, String name, Color color, String description) {
+        JPanel item = new JPanel(new FlowLayout(FlowLayout.LEFT));
+
+        // Quadrado colorido
+        JPanel colorSquare = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                g.setColor(color);
+                g.fillOval(0, 0, 15, 15);
+            }
+        };
+        colorSquare.setPreferredSize(new Dimension(15, 15));
+
+        item.add(colorSquare);
+        item.add(new JLabel("<html><b>" + name + "</b><br>" + description + "</html>"));
+        panel.add(item);
+    }
+
+    public void updateAgentPositions(List<AgentInfo> agents) {
+        simulationPanel.setAgents(agents);
+
+        // Conta populações atuais e novas mortes
+        int currentHerbivores = 0;
+        int currentCarnivores = 0;
+
+        for (AgentInfo agent : agents) {
+            if (agent.type == AgentInfo.AgentType.HERBIVORE) {
+                if (agent.energy > 0) {
+                    currentHerbivores++;
+                } else if (!deadHerbivores.contains(agent.name)) {
+                    totalHerbivoreDeaths++;
+                    deadHerbivores.add(agent.name);
+                }
+            } else if (agent.type == AgentInfo.AgentType.CARNIVORE) {
+                if (agent.energy > 0) {
+                    currentCarnivores++;
+                } else if (!deadCarnivores.contains(agent.name)) {
+                    totalCarnivoreDeaths++;
+                    deadCarnivores.add(agent.name);
+                }
+            }
+        }
+
+        // Atualiza rótulos
+        herbivoreStatsLabel.setText(String.format("<html><b>Herbívoros</b><br>Vivos: %d<br>Total de Mortes: %d</html>",
+                currentHerbivores, totalHerbivoreDeaths));
+        carnivoreStatsLabel.setText(String.format("<html><b>Carnívoros</b><br>Vivos: %d<br>Total de Mortes: %d</html>",
+                currentCarnivores, totalCarnivoreDeaths));
+
+        simulationPanel.repaint();
+    }
+
     private class SimulationPanel extends JPanel {
         private List<AgentInfo> agents = new ArrayList<>();
 
