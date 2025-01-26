@@ -131,7 +131,64 @@ public class HerbivoreAgent extends Agent {
                         }
                     }
 
-                    // TODO: Implementar consumo de plantas
+                    // Se encontrou uma planta dentro do alcance, come ela
+                    if (closestPlantAID != null) {
+                        if (closestDistance <= SPATIAL_AWARENESS_RADIUS && feedingCooldown <= 0 &&
+                                (lastFeedingPosition == null ||
+                                        position.distanceTo(lastFeedingPosition) >= MIN_DISTANCE_TO_LAST_PLANT)) {
+                            // Solicita energia da planta
+                            ACLMessage energyRequest = new ACLMessage(ACLMessage.REQUEST);
+                            energyRequest.addReceiver(closestPlantAID);
+                            energyRequest.setContent("getEnergy");
+                            send(energyRequest);
+
+                            // Aguarda resposta com timeout
+                            ACLMessage energyResponse = blockingReceive(1000);
+                            if (energyResponse != null) {
+                                int energyToConsume = Integer.parseInt(energyResponse.getContent());
+                                if (energyToConsume > 0) {
+                                    // Atualiza própria energia
+                                    energy += energyToConsume;
+                                    if (energy > 100)
+                                        energy = 100;
+
+                                    // Atualiza variáveis de comportamento de busca
+                                    ticksWithoutFood = 0;
+                                    foundFood = true;
+                                    feedingCooldown = FEEDING_COOLDOWN;
+                                    lastFeedingPosition = new Position(closestPlantPos.x, closestPlantPos.y);
+
+                                    // Se afasta da planta após se alimentar em uma direção aleatória
+                                    facingDirection = Math.random() * 2 * Math.PI;
+                                    double moveDistance = MIN_DISTANCE_TO_LAST_PLANT * 0.75;
+
+                                    // Tenta até 4 direções aleatórias diferentes para encontrar um movimento válido
+                                    boolean foundValidMove = false;
+                                    for (int i = 0; i < 4 && !foundValidMove; i++) {
+                                        double newX = position.x + (moveDistance * Math.cos(facingDirection));
+                                        double newY = position.y + (moveDistance * Math.sin(facingDirection));
+
+                                        // Mantém dentro dos limites e verifica distância mínima
+                                        newX = Math.max(5, Math.min(95, newX));
+                                        newY = Math.max(5, Math.min(95, newY));
+                                        Position newPos = new Position(newX, newY);
+
+                                        // Verifica se a nova posição está longe o suficiente da planta
+                                        if (newPos.distanceTo(closestPlantPos) >= MIN_DISTANCE_TO_LAST_PLANT * 0.5) {
+                                            position = newPos;
+                                            foundValidMove = true;
+                                        } else {
+                                            facingDirection = Math.random() * 2 * Math.PI;
+                                        }
+                                    }
+
+                                    SimulationLauncher.updateAgentInfo(getLocalName(), position, energy,
+                                            facingDirection);
+                                    return;
+                                }
+                            }
+                        }
+                    }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
