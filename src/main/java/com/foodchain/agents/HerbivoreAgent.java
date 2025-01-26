@@ -16,7 +16,9 @@ public class HerbivoreAgent extends Agent {
     private int energy = 100;
     private double facingDirection = Math.random() * 2 * Math.PI; // Direção para onde o herbívoro está olhando
 
-    private static final int ENERGY_CONSUMPTION = 3;
+    private boolean isInHuntingRadius(Position target) {
+        return position.distanceTo(target) <= HUNTING_RADIUS;
+    }
 
     @Override
     protected void setup() {
@@ -129,7 +131,25 @@ public class HerbivoreAgent extends Agent {
                             send(reply);
                             break;
                         default:
-                            System.out.println("Mensagem recebida: " + msg.getContent());
+                            if (msg.getContent().startsWith("consume,")) {
+                                String[] parts = msg.getContent().split(",");
+                                int energyToConsume = Integer.parseInt(parts[1]);
+                                energy -= energyToConsume;
+                                if (energy <= 0) {
+                                    energy = 0;
+                                    SimulationLauncher.updateAgentInfo(myAgent.getLocalName(), position, energy,
+                                            facingDirection);
+                                    try {
+                                        DFService.deregister(myAgent);
+                                    } catch (FIPAException e) {
+                                        e.printStackTrace();
+                                    }
+                                    myAgent.doDelete();
+                                } else {
+                                    SimulationLauncher.updateAgentInfo(myAgent.getLocalName(), position, energy,
+                                            facingDirection);
+                                }
+                            }
                             break;
                     }
                 } else {
