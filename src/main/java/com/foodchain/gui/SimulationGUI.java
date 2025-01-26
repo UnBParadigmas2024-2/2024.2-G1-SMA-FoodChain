@@ -15,7 +15,16 @@ public class SimulationGUI extends JFrame {
     private static final int ENERGY_BAR_HEIGHT = 4;
     private static final int ENERGY_BAR_WIDTH = 30;
     private static final int gridSize = 50;
+    private static final Font LABEL_FONT = new Font("Arial", Font.BOLD, 12);
 
+    private SimulationPanel simulationPanel;
+    private JPanel controlPanel;
+    private JLabel herbivoreStatsLabel;
+    private JLabel carnivoreStatsLabel;
+    private int totalHerbivoreDeaths = 0;
+    private int totalCarnivoreDeaths = 0;
+    private Set<String> deadHerbivores = new HashSet<>();
+    private Set<String> deadCarnivores = new HashSet<>();
 
     public static class AgentInfo {
         public enum AgentType {
@@ -206,10 +215,99 @@ public class SimulationGUI extends JFrame {
                     g2d.setStroke(new BasicStroke(2));
                     g2d.drawOval(x, y, AGENT_SIZE, AGENT_SIZE);
 
+                    // Desenha cone de visão para carnívoros e herbívoros
+                    if (agent.type == AgentInfo.AgentType.CARNIVORE || agent.type == AgentInfo.AgentType.HERBIVORE) {
+                        // Desenha raio de percepção para carnívoros e herbívoros
+                        double SPATIAL_AWARENESS_RADIUS = agent.type == AgentInfo.AgentType.CARNIVORE ? 5.0 : 7.5;
+                        int screenRadius = (int) (SPATIAL_AWARENESS_RADIUS / 200.0 * getWidth());
+                        int centerX = x + AGENT_SIZE / 2;
+                        int centerY = y + AGENT_SIZE / 2;
+
+                        // Desenha círculo preenchido com transparência muito leve
+                        Color awarenessColor = agent.type == AgentInfo.AgentType.CARNIVORE ? new Color(255, 0, 0, 15) : // Vermelho
+                                                                                                                        // muito
+                                                                                                                        // transparente
+                                                                                                                        // para
+                                                                                                                        // carnívoros
+                                new Color(0, 0, 255, 15); // Azul muito transparente para herbívoros
+                        g2d.setColor(awarenessColor);
+                        g2d.fillOval(centerX - screenRadius, centerY - screenRadius,
+                                screenRadius * 2, screenRadius * 2);
+
+                        // Desenha contorno do círculo
+                        Color outlineColor = agent.type == AgentInfo.AgentType.CARNIVORE ? new Color(255, 0, 0, 50) : // Vermelho
+                                                                                                                      // semi-transparente
+                                                                                                                      // para
+                                                                                                                      // carnívoros
+                                new Color(0, 0, 255, 50); // Azul semi-transparente para herbívoros
+                        g2d.setColor(outlineColor);
+                        g2d.setStroke(new BasicStroke(1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_BEVEL,
+                                0, new float[] { 5 }, 0)); // Linha tracejada
+                        g2d.drawOval(centerX - screenRadius, centerY - screenRadius,
+                                screenRadius * 2, screenRadius * 2);
+
+                        // Parâmetros do campo de visão
+                        double FOV_ANGLE = agent.type == AgentInfo.AgentType.CARNIVORE ? Math.PI / 1.5 : Math.PI / 2; // 120
+                                                                                                                      // ou
+                                                                                                                      // 90
+                                                                                                                      // graus
+                        double FOV_RANGE = agent.type == AgentInfo.AgentType.CARNIVORE ? 17.5 : 10.0; // Igual ao
+                                                                                                      // HUNTING_RADIUS
+
+                        // Converte alcance do campo de visão para coordenadas da tela
+                        int fovRange = (int) (FOV_RANGE / 90.0 * getWidth());
+
+                        // Calcula pontos do cone de visão
+                        double leftAngle = agent.facingDirection - FOV_ANGLE / 2;
+                        double rightAngle = agent.facingDirection + FOV_ANGLE / 2;
+
+                        int[] xPoints = new int[3];
+                        int[] yPoints = new int[3];
+
+                        // Ponto central
+                        xPoints[0] = centerX;
+                        yPoints[0] = centerY;
+
+                        // Ponto esquerdo do cone
+                        xPoints[1] = centerX + (int) (Math.cos(leftAngle) * fovRange);
+                        yPoints[1] = centerY + (int) (Math.sin(leftAngle) * fovRange);
+
+                        // Ponto direito do cone
+                        xPoints[2] = centerX + (int) (Math.cos(rightAngle) * fovRange);
+                        yPoints[2] = centerY + (int) (Math.sin(rightAngle) * fovRange);
+
+                        // Desenha cone de visão com cor apropriada
+                        Color fovColor = agent.type == AgentInfo.AgentType.CARNIVORE ? new Color(255, 0, 0, 30) : // Vermelho
+                                                                                                                  // semi-transparente
+                                                                                                                  // para
+                                                                                                                  // carnívoros
+                                new Color(0, 0, 255, 30); // Azul semi-transparente para herbívoros
+                        g2d.setColor(fovColor);
+                        g2d.fillPolygon(xPoints, yPoints, 3);
+
+                        // Desenha contorno do cone de visão
+                        g2d.setColor(agent.type == AgentInfo.AgentType.CARNIVORE ? new Color(255, 0, 0, 100) : // Vermelho
+                                                                                                               // mais
+                                                                                                               // opaco
+                                                                                                               // para
+                                                                                                               // carnívoros
+                                new Color(0, 0, 255, 100)); // Azul mais opaco para herbívoros
+                        g2d.setStroke(new BasicStroke(1.0f));
+                        g2d.drawPolygon(xPoints, yPoints, 3);
+
+                        // Desenha indicador de direção
+                        g2d.setColor(agent.type == AgentInfo.AgentType.CARNIVORE ? Color.RED : Color.BLUE);
+                        g2d.setStroke(new BasicStroke(2.0f));
+                        int directionLength = AGENT_SIZE / 2;
+                        int dirX = centerX + (int) (Math.cos(agent.facingDirection) * directionLength);
+                        int dirY = centerY + (int) (Math.sin(agent.facingDirection) * directionLength);
+                        g2d.drawLine(centerX, centerY, dirX, dirY);
+                    }
+
                     // Desenha barra de energia
                     int barX = x + AGENT_SIZE / 2 - ENERGY_BAR_WIDTH / 2;
                     int barY = y + AGENT_SIZE + 5;
-                    
+                    drawEnergyBar(g2d, barX, barY, agent.energy);
                 }
 
                 // Desenha nome do agente
@@ -234,6 +332,17 @@ public class SimulationGUI extends JFrame {
                     return Color.GRAY;
             }
         }
-    
+
+        private void drawEnergyBar(Graphics2D g2d, int x, int y, int energy) {
+            // Desenha fundo da barra de energia
+            g2d.setColor(Color.DARK_GRAY);
+            g2d.fillRect(x, y, ENERGY_BAR_WIDTH, ENERGY_BAR_HEIGHT);
+
+            // Desenha nível de energia
+            Color energyColor = energy > 50 ? Color.GREEN : energy > 25 ? Color.YELLOW : Color.RED;
+            g2d.setColor(energyColor);
+            int energyWidth = (int) ((energy / 100.0) * ENERGY_BAR_WIDTH);
+            g2d.fillRect(x, y, energyWidth, ENERGY_BAR_HEIGHT);
+        }
     }
 }
