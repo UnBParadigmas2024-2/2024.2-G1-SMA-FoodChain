@@ -10,7 +10,11 @@ import jade.domain.DFService;
 import jade.domain.FIPAException;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
+import jade.domain.FIPAException;
+import jade.core.AID;
 import jade.lang.acl.ACLMessage;
+import com.foodchain.SimulationLauncher;
+import jade.core.behaviours.CyclicBehaviour;
 
 public class HerbivoreAgent extends Agent {
     private Position position;
@@ -67,7 +71,9 @@ public class HerbivoreAgent extends Agent {
                     DFAgentDescription[] result = DFService.search(myAgent, template);
 
                     // Encontra a planta mais próxima dentro do campo de visão
+                    AID closestPlantAID = null;
                     double closestDistance = Double.MAX_VALUE;
+                    Position closestPlantPos = null;
                     for (DFAgentDescription plant : result) {
                         AID plantAID = plant.getName();
                         ACLMessage posRequest = new ACLMessage(ACLMessage.REQUEST);
@@ -86,8 +92,10 @@ public class HerbivoreAgent extends Agent {
                                             Double.parseDouble(coords[1].trim()));
                                     double distance = position.distanceTo(plantPos);
                                     // Considera apenas plantas dentro do campo de visão
-                                    if (distance < closestDistance && isInHuntingRadius(plantPos)) {
+                                    if (distance < closestDistance && isInFieldOfView(plantPos)) {
                                         closestDistance = distance;
+                                        closestPlantAID = plantAID;
+                                        closestPlantPos = plantPos;
                                     }
                                 }
                             } catch (NumberFormatException e) {
@@ -99,6 +107,11 @@ public class HerbivoreAgent extends Agent {
                     // TODO: Implementar consumo de plantas
                 } catch (Exception e) {
                     e.printStackTrace();
+                }
+
+                // Diminui tempo de espera para alimentação
+                if (feedingCooldown > 0) {
+                    feedingCooldown--;
                 }
 
                 // Se não encontrou planta ou não está com fome, move na direção atual
@@ -125,6 +138,28 @@ public class HerbivoreAgent extends Agent {
 
                     double newX = position.x + (moveDistance * Math.cos(facingDirection));
                     double newY = position.y + (moveDistance * Math.sin(facingDirection));
+
+                    // Adiciona aleatoriedade apenas quando não está perseguindo comida
+                    if (ticksWithoutFood > 0) {
+                        double randomAngle = (Math.random() - 0.5) * (FOV_ANGLE / 2);
+                        double adjustedDirection = facingDirection + randomAngle;
+                        newX += (Math.random() * MOVEMENT_RANGE / 4) * Math.cos(adjustedDirection);
+                        newY += (Math.random() * MOVEMENT_RANGE / 4) * Math.sin(adjustedDirection);
+                    }
+
+                    // Verifica se vai bater em uma borda e muda direção se necessário
+                    if (newX <= 5 || newX >= 95 || newY <= 5 || newY >= 95) {
+                        // Rotaciona direção em 90-180 graus ao bater na borda
+                        facingDirection += Math.PI * (0.5 + Math.random() * 0.5);
+                        facingDirection = facingDirection % (2 * Math.PI);
+
+                        newX = position.x + (moveDistance * Math.cos(facingDirection));
+                        newY = position.y + (moveDistance * Math.sin(facingDirection));
+                    }
+
+                    // Mantém dentro dos limites
+                    newX = Math.max(5, Math.min(95, newX));
+                    newY = Math.max(5, Math.min(95, newY));
 
                     position = new Position(newX, newY);
                 }
