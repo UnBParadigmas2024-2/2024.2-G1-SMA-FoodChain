@@ -95,7 +95,6 @@ public class CarnivoreAgent extends Agent {
         // Adiciona comportamento para mover, caçar e consumir energia
         addBehaviour(new TickerBehaviour(this, 1000) {
             protected void onTick() {
-
                 if (energy < HUNTING_THRESHOLD) {
                     try {
                         // Procura por herbívoros
@@ -106,7 +105,9 @@ public class CarnivoreAgent extends Agent {
                         DFAgentDescription[] result = DFService.search(myAgent, template);
 
                         // Encontra o herbívoro mais próximo dentro do campo de visão
+                        AID closestHerbivoreAID = null;
                         double closestDistance = Double.MAX_VALUE;
+                        Position closestHerbivorePos = null;
                         for (DFAgentDescription herbivore : result) {
                             AID herbivoreAID = herbivore.getName();
                             ACLMessage posRequest = new ACLMessage(ACLMessage.REQUEST);
@@ -125,7 +126,85 @@ public class CarnivoreAgent extends Agent {
                                 // Considera apenas herbívoros dentro do campo de visão
                                 if (distance < closestDistance && isInFieldOfView(herbivorePos)) {
                                     closestDistance = distance;
+                                    closestHerbivoreAID = herbivoreAID;
+                                    closestHerbivorePos = herbivorePos;
                                 }
+                            }
+                        }
+
+                        // Se encontrou um herbívoro dentro do alcance, verifica se está ao alcance de
+                        // ataque
+                        if (closestHerbivoreAID != null) {
+                            if (closestDistance <= MELEE_RANGE) {
+                                // Solicita energia do herbívoro
+                                ACLMessage energyRequest = new ACLMessage(ACLMessage.REQUEST);
+                                energyRequest.addReceiver(closestHerbivoreAID);
+                                energyRequest.setContent("getEnergy");
+                                send(energyRequest);
+
+                                // Aguarda resposta de energia
+                                ACLMessage energyReply = blockingReceive(1000);
+                                if (energyReply != null) {
+                                    int herbivoreEnergy = Integer.parseInt(energyReply.getContent());
+                                    if (herbivoreEnergy > 0) {
+                                        int energyToConsume = Math.min(herbivoreEnergy, ENERGY_FROM_HERBIVORE);
+
+                                        // Move para a posição do herbívoro antes de consumir
+                                        position = closestHerbivorePos;
+                                        SimulationLauncher.updateAgentInfo(getLocalName(), position, energy,
+                                                facingDirection);
+
+                                        // Envia pedido de consumo
+                                        ACLMessage consumeRequest = new ACLMessage(ACLMessage.REQUEST);
+                                        consumeRequest.addReceiver(closestHerbivoreAID);
+                                        consumeRequest.setContent("consume," + energyToConsume);
+                                        send(consumeRequest);
+
+                                        // Atualiza energia para o máximo
+                                        energy = MAX_ENERGY;
+
+                                        // Mata o herbívoro
+                                        ACLMessage killMessage = new ACLMessage(ACLMessage.REQUEST);
+                                        killMessage.addReceiver(closestHerbivoreAID);
+                                        killMessage.setContent("die");
+                                        send(killMessage);
+                                        ticksWithoutFood = 0;
+                                    }
+                                }
+                            } else {
+                                // Se não estiver ao alcance de ataque, ajusta direção para o herbívoro e move
+                                // mais rápido
+                                double dx = closestHerbivorePos.x - position.x;
+                                double dy = closestHerbivorePos.y - position.y;
+                                facingDirection = Math.atan2(dy, dx);
+
+                                // Calcula velocidade base de caça
+                                double huntingSpeed = MOVEMENT_RANGE * 2.0; // Velocidade base dobrada
+
+                                // Ajusta velocidade baseado na distância até a presa
+                                if (closestDistance < HUNTING_RADIUS / 2) {
+                                    // Diminui velocidade ao se aproximar para melhor precisão
+                                    huntingSpeed *= 0.8;
+                                } else if (closestDistance > HUNTING_RADIUS * 0.8) {
+                                    // Aumenta velocidade quando longe para alcançar
+                                    huntingSpeed *= 1.5;
+                                }
+
+                                // Calcula movimento com melhor precisão
+                                double moveX = dx * (huntingSpeed / closestDistance);
+                                double moveY = dy * (huntingSpeed / closestDistance);
+
+                                // Aplica movimento com verificação de limites
+                                position = new Position(
+                                        Math.max(5, Math.min(95, position.x + moveX)),
+                                        Math.max(5, Math.min(95, position.y + moveY)));
+
+                                // Reinicia contagem sem comida já que está perseguindo ativamente
+                                ticksWithoutFood = 0;
+
+                                // Atualiza GUI imediatamente para mostrar perseguição suave
+                                SimulationLauncher.updateAgentInfo(getLocalName(), position, energy, facingDirection);
+                                return;
                             }
                         }
                     } catch (Exception e) {
