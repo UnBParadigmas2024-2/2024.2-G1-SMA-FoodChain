@@ -1,21 +1,19 @@
 package com.foodchain;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import java.util.concurrent.CopyOnWriteArrayList;
-
-import com.foodchain.agents.Position;
-import com.foodchain.gui.SimulationGUI;
-import com.foodchain.gui.SimulationGUI.AgentInfo;
-import com.foodchain.gui.SimulationGUI.AgentInfo.AgentType;
-
 import jade.core.Profile;
 import jade.core.ProfileImpl;
 import jade.core.Runtime;
 import jade.wrapper.AgentContainer;
 import jade.wrapper.AgentController;
 import jade.wrapper.StaleProxyException;
+import com.foodchain.gui.SimulationGUI;
+import com.foodchain.agents.Position;
+import com.foodchain.gui.SimulationGUI.AgentInfo;
+import com.foodchain.gui.SimulationGUI.AgentInfo.AgentType;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.ArrayList;
 
 public class SimulationLauncher {
     private static SimulationGUI gui;
@@ -103,6 +101,37 @@ public class SimulationLauncher {
                         "com.foodchain.agents.HerbivoreAgent",
                         new Object[] { pos });
                 herbivoreAgent.start();
+            }
+
+            // Carnívoros - espalhados pelo espaço
+            for (int i = 0; i < 4; i++) {
+                Position pos;
+                boolean validPosition;
+                int attempts = 0;
+                do {
+                    pos = new Position(
+                            5 + random.nextDouble() * 90,
+                            5 + random.nextDouble() * 90);
+                    validPosition = true;
+                    // Verifica distância de outros agentes
+                    for (Position occupied : occupiedPositions) {
+                        if (pos.distanceTo(occupied) < MIN_SPAWN_DISTANCE) {
+                            validPosition = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                } while (!validPosition && attempts < 50);
+
+                occupiedPositions.add(pos);
+                AgentInfo agentInfo = new AgentInfo("Carnivore" + i, pos, AgentType.CARNIVORE, 100);
+                agentInfos.add(agentInfo);
+
+                AgentController carnivoreAgent = mainContainer.createNewAgent(
+                        "Carnivore" + i,
+                        "com.foodchain.agents.CarnivoreAgent",
+                        new Object[] { pos });
+                carnivoreAgent.start();
             }
 
             // Inicia thread de atualização da interface gráfica
