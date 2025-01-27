@@ -74,6 +74,37 @@ public class SimulationLauncher {
                 plantAgent.start();
             }
 
+            // Herbívoros - espalhados pelo espaço
+            for (int i = 0; i < 10; i++) {
+                Position pos;
+                boolean validPosition;
+                int attempts = 0;
+                do {
+                    pos = new Position(
+                            5 + random.nextDouble() * 90,
+                            5 + random.nextDouble() * 90);
+                    validPosition = true;
+                    // Verifica distância de outros agentes
+                    for (Position occupied : occupiedPositions) {
+                        if (pos.distanceTo(occupied) < MIN_SPAWN_DISTANCE) {
+                            validPosition = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                } while (!validPosition && attempts < 50);
+
+                occupiedPositions.add(pos);
+                AgentInfo agentInfo = new AgentInfo("Herbivore" + i, pos, AgentType.HERBIVORE, 100);
+                agentInfos.add(agentInfo);
+
+                AgentController herbivoreAgent = mainContainer.createNewAgent(
+                        "Herbivore" + i,
+                        "com.foodchain.agents.HerbivoreAgent",
+                        new Object[] { pos });
+                herbivoreAgent.start();
+            }
+
             // Inicia thread de atualização da interface gráfica
             new Thread(() -> {
                 while (true) {
