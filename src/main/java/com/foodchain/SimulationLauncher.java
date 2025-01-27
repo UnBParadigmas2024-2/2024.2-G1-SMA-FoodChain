@@ -1,19 +1,21 @@
 package com.foodchain;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import com.foodchain.agents.Position;
+import com.foodchain.gui.SimulationGUI;
+import com.foodchain.gui.SimulationGUI.AgentInfo;
+import com.foodchain.gui.SimulationGUI.AgentInfo.AgentType;
+
 import jade.core.Profile;
 import jade.core.ProfileImpl;
 import jade.core.Runtime;
 import jade.wrapper.AgentContainer;
 import jade.wrapper.AgentController;
 import jade.wrapper.StaleProxyException;
-import com.foodchain.gui.SimulationGUI;
-import com.foodchain.agents.Position;
-import com.foodchain.gui.SimulationGUI.AgentInfo;
-import com.foodchain.gui.SimulationGUI.AgentInfo.AgentType;
-import java.util.List;
-import java.util.Random;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.ArrayList;
 
 public class SimulationLauncher {
     private static SimulationGUI gui;
@@ -140,7 +142,13 @@ public class SimulationLauncher {
                     try {
                         // Atualiza a interface com as posições atuais dos agentes
                         gui.updateAgentPositions(agentInfos);
-                        Thread.sleep(100); // Atualiza a cada 100ms
+
+                        // Se a simulação estiver congelada, não atualize as posições dos agentes
+                        if (!gui.isSimulationFrozen()) {
+                            Thread.sleep(100); // Atualiza a cada 100ms
+                        } else {
+                            Thread.sleep(1000); // Reduz a frequência de atualização quando congelado
+                        }
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -170,13 +178,12 @@ public class SimulationLauncher {
         }
     }
 
-    // Método para atualizar posição e energia do agente (será chamado pelos
-    // agentes)
+    // Método para atualizar posição e energia do agente
     public static void updateAgentInfo(String name, Position position, int energy) {
         updateAgentInfo(name, position, energy, 0.0); // Direção padrão
     }
 
-    // Método sobrecarregado que inclui direção
+    // Método sobrecarregado que inclui direção do agente
     public static void updateAgentInfo(String name, Position position, int energy, double facingDirection) {
         for (int i = 0; i < agentInfos.size(); i++) {
             AgentInfo info = agentInfos.get(i);
