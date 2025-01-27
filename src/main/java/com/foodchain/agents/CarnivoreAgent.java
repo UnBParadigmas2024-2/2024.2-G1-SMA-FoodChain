@@ -15,9 +15,50 @@ public class CarnivoreAgent extends Agent {
     private int energy = MAX_ENERGY;
     private static final int ENERGY_CONSUMPTION = 2;
     private static final int PASSIVE_ENERGY_DECAY = 0;
+    private static final double HUNTING_RADIUS = 17.5;
+    private static final double FOV_ANGLE = Math.PI / 1.5;
+    private static final double FOV_RANGE = HUNTING_RADIUS;
+    private static final double SPATIAL_AWARENESS_RADIUS = 5.0;
 
     // Variáveis de comportamento de busca
     private double facingDirection = Math.random() * 2 * Math.PI; // Direção para onde o carnívoro está olhando
+
+    // Método auxiliar para verificar se um ponto está dentro do alcance de detecção
+    // (cone de visão ou raio de percepção)
+    private boolean isInFieldOfView(Position target) {
+        double distance = position.distanceTo(target);
+
+        // Primeiro verifica se o alvo está dentro do raio de percepção
+        if (distance <= SPATIAL_AWARENESS_RADIUS) {
+            // Se o alvo estiver muito próximo, vira para encará-lo
+            double dx = target.x - position.x;
+            double dy = target.y - position.y;
+            facingDirection = Math.atan2(dy, dx);
+            return true;
+        }
+
+        // Se não estiver no raio de percepção, verifica se está no cone de visão
+        if (distance > FOV_RANGE) {
+            return false;
+        }
+
+        // Calcula o ângulo entre a direção atual e o alvo
+        double dx = target.x - position.x;
+        double dy = target.y - position.y;
+        double angleToTarget = Math.atan2(dy, dx);
+
+        // Normaliza os ângulos para [0, 2π]
+        double normalizedFacing = (facingDirection + 2 * Math.PI) % (2 * Math.PI);
+        double normalizedTarget = (angleToTarget + 2 * Math.PI) % (2 * Math.PI);
+
+        // Calcula o menor ângulo entre as duas direções
+        double angleDiff = Math.abs(normalizedFacing - normalizedTarget);
+        if (angleDiff > Math.PI) {
+            angleDiff = 2 * Math.PI - angleDiff;
+        }
+
+        return angleDiff <= FOV_ANGLE / 2;
+    }
 
     @Override
     protected void setup() {
