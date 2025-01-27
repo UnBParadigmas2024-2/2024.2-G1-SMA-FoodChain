@@ -56,6 +56,17 @@ public class HerbivoreAgent extends Agent {
         double dy = target.y - position.y;
         double angleToTarget = Math.atan2(dy, dx);
 
+        // Normaliza os ângulos para [0, 2π]
+        double normalizedFacing = (facingDirection + 2 * Math.PI) % (2 * Math.PI);
+        double normalizedTarget = (angleToTarget + 2 * Math.PI) % (2 * Math.PI);
+
+        // Calcula o menor ângulo entre as duas direções
+        double angleDiff = Math.abs(normalizedFacing - normalizedTarget);
+        if (angleDiff > Math.PI) {
+            angleDiff = 2 * Math.PI - angleDiff;
+        }
+
+        return angleDiff <= FOV_ANGLE / 2;
     }
 
     @Override
