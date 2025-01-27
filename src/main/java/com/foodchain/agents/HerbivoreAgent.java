@@ -56,7 +56,6 @@ public class HerbivoreAgent extends Agent {
         double dy = target.y - position.y;
         double angleToTarget = Math.atan2(dy, dx);
 
-        return angleToTarget <= FOV_ANGLE / 2;
     }
 
     @Override
@@ -182,12 +181,71 @@ public class HerbivoreAgent extends Agent {
                                         }
                                     }
 
+                                    // Se não encontrou movimento válido, move na direção oposta à planta
+                                    if (!foundValidMove) {
+                                        double dx = position.x - closestPlantPos.x;
+                                        double dy = position.y - closestPlantPos.y;
+                                        facingDirection = Math.atan2(dy, dx);
+                                        double newX = position.x + (MOVEMENT_RANGE * 2 * Math.cos(facingDirection));
+                                        double newY = position.y + (MOVEMENT_RANGE * 2 * Math.sin(facingDirection));
+                                        newX = Math.max(5, Math.min(95, newX));
+                                        newY = Math.max(5, Math.min(95, newY));
+                                        position = new Position(newX, newY);
+                                    }
+
                                     SimulationLauncher.updateAgentInfo(getLocalName(), position, energy,
                                             facingDirection);
                                     return;
                                 }
                             }
+                        } else {
+                            // Se estiver a distância 0 e não puder se alimentar, força movimento para longe
+                            if (closestDistance == 0.0) {
+                                // Move para longe em uma direção aleatória com distância aumentada
+                                facingDirection = Math.random() * 2 * Math.PI;
+                                double moveDistance = MOVEMENT_RANGE * 2;
+                                double newX = position.x + (moveDistance * Math.cos(facingDirection));
+                                double newY = position.y + (moveDistance * Math.sin(facingDirection));
+                                newX = Math.max(5, Math.min(95, newX));
+                                newY = Math.max(5, Math.min(95, newY));
+                                position = new Position(newX, newY);
+                            } else if (lastFeedingPosition == null
+                                    || position.distanceTo(lastFeedingPosition) >= MIN_DISTANCE_TO_LAST_PLANT) {
+                                // Movimento normal em direção à planta se não estiver muito perto da última
+                                // posição de alimentação
+                                double dx = closestPlantPos.x - position.x;
+                                double dy = closestPlantPos.y - position.y;
+                                facingDirection = Math.atan2(dy, dx);
+
+                                // Move diretamente para a posição da planta com velocidade aumentada
+                                double huntingSpeed = MOVEMENT_RANGE * 1.5; // 50% mais rápido ao perseguir comida
+                                double moveX = Math.min(huntingSpeed, Math.abs(dx)) * Math.signum(dx);
+                                double moveY = Math.min(huntingSpeed, Math.abs(dy)) * Math.signum(dy);
+
+                                position = new Position(
+                                        Math.max(5, Math.min(95, position.x + moveX)),
+                                        Math.max(5, Math.min(95, position.y + moveY)));
+
+                                // Reinicia contagem sem comida já que está perseguindo ativamente
+                                ticksWithoutFood = 0;
+                                foundFood = true;
+                            } else {
+                                // Se estiver muito perto da última posição de alimentação, move para longe em
+                                // direção aleatória
+                                facingDirection = Math.random() * 2 * Math.PI;
+                                double moveDistance = MOVEMENT_RANGE * 1.5;
+                                double newX = position.x + (moveDistance * Math.cos(facingDirection));
+                                double newY = position.y + (moveDistance * Math.sin(facingDirection));
+                                newX = Math.max(5, Math.min(95, newX));
+                                newY = Math.max(5, Math.min(95, newY));
+                                position = new Position(newX, newY);
+                            }
                         }
+
+                        // Pula movimento aleatório neste tick
+                        SimulationLauncher.updateAgentInfo(getLocalName(), position, energy,
+                                facingDirection);
+                        return;
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
