@@ -29,14 +29,13 @@ public class CarnivoreAgent extends Agent {
     private static final double SPATIAL_AWARENESS_RADIUS = 5.0;
 
     // Variáveis de comportamento de busca
-    private Position lastSuccessfulHuntPosition = null;
     private int ticksWithoutFood = 0;
     private double facingDirection = Math.random() * 2 * Math.PI; // Direção para onde o carnívoro está olhando
 
     // Constantes para reprodução
     private static final int REPRODUCTION_COOLDOWN = 150; // Tempo de espera maior que os herbívoros
     private static final int REPRODUCTION_ENERGY_COST = 50; // Custo de energia maior que os herbívoros
-    private static final int MIN_AGE_FOR_REPRODUCTION = 75; // Tempo de maturidade maior que os herbívoros
+    private static final int MIN_AGE_FOR_REPRODUCTION = 65; // Tempo de maturidade maior que os herbívoros
     private int reproductionCooldown = REPRODUCTION_COOLDOWN;
     private int age = 0;
 
@@ -118,7 +117,6 @@ public class CarnivoreAgent extends Agent {
 
                 Position oldPos = new Position(position.x, position.y);
                 int oldEnergy = energy;
-                boolean foundFood = false;
 
                 // Tenta encontrar e comer herbívoros apenas quando a energia está abaixo do
                 // limite
@@ -203,7 +201,6 @@ public class CarnivoreAgent extends Agent {
                                         killMessage.addReceiver(closestHerbivoreAID);
                                         killMessage.setContent("die");
                                         send(killMessage);
-                                        lastSuccessfulHuntPosition = position;
                                         ticksWithoutFood = 0;
                                         logger.info(String.format("Carnívoro %s matou herbívoro em (%.2f, %.2f)",
                                                 getLocalName(),
@@ -259,7 +256,6 @@ public class CarnivoreAgent extends Agent {
 
                                 // Reinicia contagem sem comida já que está perseguindo ativamente
                                 ticksWithoutFood = 0;
-                                foundFood = true;
 
                                 // Atualiza GUI imediatamente para mostrar perseguição suave
                                 SimulationLauncher.updateAgentInfo(getLocalName(), position, energy, facingDirection);
