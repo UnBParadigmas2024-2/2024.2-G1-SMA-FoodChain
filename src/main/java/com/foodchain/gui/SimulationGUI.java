@@ -21,10 +21,18 @@ public class SimulationGUI extends JFrame {
     private JPanel controlPanel;
     private JLabel herbivoreStatsLabel;
     private JLabel carnivoreStatsLabel;
+    private JLabel tickCountLabel;
+    private JLabel timeLabel;
+    private JLabel simulationStatusLabel;
     private int totalHerbivoreDeaths = 0;
     private int totalCarnivoreDeaths = 0;
+    private static int totalHerbivoreReproductions = 0;
+    private static int totalCarnivoreReproductions = 0;
     private Set<String> deadHerbivores = new HashSet<>();
     private Set<String> deadCarnivores = new HashSet<>();
+    private long tickCount = 0;
+    private boolean simulationFrozen = false;
+    private long startTime = System.currentTimeMillis();
 
     public static class AgentInfo {
         public enum AgentType {
@@ -76,25 +84,65 @@ public class SimulationGUI extends JFrame {
         controlPanel.setBorder(BorderFactory.createTitledBorder("Estatísticas & Legenda"));
         controlPanel.setLayout(new BoxLayout(controlPanel, BoxLayout.Y_AXIS));
 
+        // Container para todos os painéis de estatísticas
+        JPanel statsContainer = new JPanel();
+        statsContainer.setLayout(new BoxLayout(statsContainer, BoxLayout.Y_AXIS));
+        statsContainer.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        // Adiciona status da simulação
+        JPanel statusPanel = new JPanel();
+        statusPanel.setLayout(new BoxLayout(statusPanel, BoxLayout.Y_AXIS));
+        statusPanel.setBorder(BorderFactory.createTitledBorder("Status da Simulação"));
+        statusPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        simulationStatusLabel = new JLabel("<html><b>Status:</b> Em Execução</html>");
+        simulationStatusLabel.setForeground(new Color(0, 128, 0)); // Cor verde para status em execução
+        simulationStatusLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        statusPanel.add(simulationStatusLabel);
+        statsContainer.add(statusPanel);
+        statsContainer.add(Box.createVerticalStrut(10));
+
+        // Adiciona contador de ticks e tempo
+        JPanel timePanel = new JPanel();
+        timePanel.setLayout(new BoxLayout(timePanel, BoxLayout.Y_AXIS));
+        timePanel.setBorder(BorderFactory.createTitledBorder("Tempo de Simulação"));
+        timePanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        tickCountLabel = new JLabel("<html><b>Ticks:</b> 0</html>");
+        timeLabel = new JLabel("<html><b>Tempo:</b> 00:00:00</html>");
+        tickCountLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        timeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        timePanel.add(tickCountLabel);
+        timePanel.add(Box.createVerticalStrut(5));
+        timePanel.add(timeLabel);
+        statsContainer.add(timePanel);
+        statsContainer.add(Box.createVerticalStrut(10));
+
         // Adiciona estatísticas da população
         JPanel statsPanel = new JPanel();
         statsPanel.setLayout(new BoxLayout(statsPanel, BoxLayout.Y_AXIS));
         statsPanel.setBorder(BorderFactory.createTitledBorder("Estatísticas da População"));
+        statsPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        herbivoreStatsLabel = new JLabel("<html><b>Herbívoros</b><br>Vivos: 0<br>Total de Mortes: 0</html>");
-        carnivoreStatsLabel = new JLabel("<html><b>Carnívoros</b><br>Vivos: 0<br>Total de Mortes: 0</html>");
+        herbivoreStatsLabel = new JLabel(
+                "<html><b>Herbívoros</b><br>Vivos: 0<br>Total de Mortes: 0<br>Reproduções: 0</html>");
+        carnivoreStatsLabel = new JLabel(
+                "<html><b>Carnívoros</b><br>Vivos: 0<br>Total de Mortes: 0<br>Reproduções: 0</html>");
+        herbivoreStatsLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        carnivoreStatsLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         statsPanel.add(herbivoreStatsLabel);
         statsPanel.add(Box.createVerticalStrut(10));
         statsPanel.add(carnivoreStatsLabel);
+        statsContainer.add(statsPanel);
+        statsContainer.add(Box.createVerticalStrut(20));
 
-        controlPanel.add(statsPanel);
-        controlPanel.add(Box.createVerticalStrut(20));
+        // Adiciona o container de estatísticas ao painel de controle
+        controlPanel.add(statsContainer);
 
         // Adiciona itens da legenda
         JPanel legendPanel = new JPanel();
         legendPanel.setLayout(new BoxLayout(legendPanel, BoxLayout.Y_AXIS));
         legendPanel.setBorder(BorderFactory.createTitledBorder("Legenda"));
+        legendPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         addLegendItem(legendPanel, "Plantas", new Color(34, 139, 34), "Estáticas, geram energia");
         addLegendItem(legendPanel, "Herbívoros", new Color(30, 144, 255), "Caçam plantas");
@@ -106,7 +154,7 @@ public class SimulationGUI extends JFrame {
     private void addLegendItem(JPanel panel, String name, Color color, String description) {
         JPanel item = new JPanel(new FlowLayout(FlowLayout.LEFT));
 
-        // Quadrado colorido
+        // Cria o quadrado colorido
         JPanel colorSquare = new JPanel() {
             @Override
             protected void paintComponent(Graphics g) {
@@ -122,38 +170,89 @@ public class SimulationGUI extends JFrame {
         panel.add(item);
     }
 
-    public void updateAgentPositions(List<AgentInfo> agents) {
-        simulationPanel.setAgents(agents);
+    public static void incrementReproductionCount(String agentType) {
+        if (agentType.equals("Herbivore")) {
+            totalHerbivoreReproductions++;
+        } else if (agentType.equals("Carnivore")) {
+            totalCarnivoreReproductions++;
+        }
+    }
 
-        // Conta populações atuais e novas mortes
+    public void updateAgentPositions(List<AgentInfo> agents) {
+        // Primeiro conta a população atual
         int currentHerbivores = 0;
         int currentCarnivores = 0;
 
         for (AgentInfo agent : agents) {
+            if (agent.type == AgentInfo.AgentType.HERBIVORE && agent.energy > 0) {
+                currentHerbivores++;
+            } else if (agent.type == AgentInfo.AgentType.CARNIVORE && agent.energy > 0) {
+                currentCarnivores++;
+            }
+        }
+
+        // Verifica se a simulação deve ser congelada
+        if (!simulationFrozen && (currentHerbivores == 0 || currentCarnivores == 0)) {
+            simulationFrozen = true;
+            String reason = currentHerbivores == 0 ? "Extinção dos Herbívoros" : "Extinção dos Carnívoros";
+            simulationStatusLabel
+                    .setText(String.format("<html><b>Status:</b> Simulação Congelada<br>Motivo: %s</html>", reason));
+            simulationStatusLabel.setForeground(new Color(128, 0, 0)); // Cor vermelha para status congelado
+        }
+
+        // Só incrementa o tick se a simulação não estiver congelada
+        if (!simulationFrozen) {
+            tickCount++;
+            tickCountLabel.setText(String.format("<html><b>Ticks:</b> %d</html>", tickCount));
+
+            // Atualiza o display de tempo
+            long currentTime = System.currentTimeMillis();
+            long elapsedTime = (currentTime - startTime) / 1000; // Converte para segundos
+
+            long hours = elapsedTime / 3600;
+            long minutes = (elapsedTime % 3600) / 60;
+            long seconds = elapsedTime % 60;
+
+            timeLabel.setText(String.format("<html><b>Tempo:</b> %02d:%02d:%02d</html>",
+                    hours, minutes, seconds));
+        }
+
+        simulationPanel.setAgents(agents);
+
+        // Atualiza contagem de mortes e rótulos
+        for (AgentInfo agent : agents) {
             if (agent.type == AgentInfo.AgentType.HERBIVORE) {
-                if (agent.energy > 0) {
-                    currentHerbivores++;
-                } else if (!deadHerbivores.contains(agent.name)) {
+                if (agent.energy <= 0 && !deadHerbivores.contains(agent.name)) {
                     totalHerbivoreDeaths++;
                     deadHerbivores.add(agent.name);
+                    System.out.println(
+                            "Morte de herbívoro registrada: " + agent.name + " - Total de mortes: "
+                                    + totalHerbivoreDeaths);
                 }
             } else if (agent.type == AgentInfo.AgentType.CARNIVORE) {
-                if (agent.energy > 0) {
-                    currentCarnivores++;
-                } else if (!deadCarnivores.contains(agent.name)) {
+                if (agent.energy <= 0 && !deadCarnivores.contains(agent.name)) {
                     totalCarnivoreDeaths++;
                     deadCarnivores.add(agent.name);
+                    System.out.println(
+                            "Morte de carnívoro registrada: " + agent.name + " - Total de mortes: "
+                                    + totalCarnivoreDeaths);
                 }
             }
         }
 
         // Atualiza rótulos
-        herbivoreStatsLabel.setText(String.format("<html><b>Herbívoros</b><br>Vivos: %d<br>Total de Mortes: %d</html>",
-                currentHerbivores, totalHerbivoreDeaths));
-        carnivoreStatsLabel.setText(String.format("<html><b>Carnívoros</b><br>Vivos: %d<br>Total de Mortes: %d</html>",
-                currentCarnivores, totalCarnivoreDeaths));
+        herbivoreStatsLabel.setText(
+                String.format("<html><b>Herbívoros</b><br>Vivos: %d<br>Total de Mortes: %d<br>Reproduções: %d</html>",
+                        currentHerbivores, totalHerbivoreDeaths, totalHerbivoreReproductions));
+        carnivoreStatsLabel.setText(
+                String.format("<html><b>Carnívoros</b><br>Vivos: %d<br>Total de Mortes: %d<br>Reproduções: %d</html>",
+                        currentCarnivores, totalCarnivoreDeaths, totalCarnivoreReproductions));
 
         simulationPanel.repaint();
+    }
+
+    public boolean isSimulationFrozen() {
+        return simulationFrozen;
     }
 
     private class SimulationPanel extends JPanel {
@@ -173,10 +272,10 @@ public class SimulationGUI extends JFrame {
             super.paintComponent(g);
             Graphics2D g2d = (Graphics2D) g;
 
-            // Ativa antialiasing
+            // Ativa suavização de bordas
             g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
-            // Desenha grade
+            // Desenha grade de fundo
             g2d.setColor(new Color(230, 230, 230));
             for (int x = 0; x < getWidth(); x += gridSize) {
                 g2d.drawLine(x, 0, x, getHeight());
@@ -185,7 +284,7 @@ public class SimulationGUI extends JFrame {
                 g2d.drawLine(0, y, getWidth(), y);
             }
 
-            // Desenha agentes
+            // Desenha os agentes
             for (AgentInfo agent : agents) {
                 // Converte coordenadas do agente para coordenadas da tela
                 // Mapeia do espaço virtual (5-95) para o espaço da tela
@@ -210,31 +309,30 @@ public class SimulationGUI extends JFrame {
                     g2d.setPaint(gradient);
                     g2d.fillOval(x, y, AGENT_SIZE, AGENT_SIZE);
 
-                    // Desenha borda
+                    // Desenha borda do agente
                     g2d.setColor(baseColor.darker());
                     g2d.setStroke(new BasicStroke(2));
                     g2d.drawOval(x, y, AGENT_SIZE, AGENT_SIZE);
 
-                    // Desenha cone de visão para carnívoros e herbívoros
+                    // Desenha campo de visão para carnívoros e herbívoros
                     if (agent.type == AgentInfo.AgentType.CARNIVORE || agent.type == AgentInfo.AgentType.HERBIVORE) {
-                        // Desenha raio de percepção para carnívoros e herbívoros
+                        // Desenha raio de percepção
                         double SPATIAL_AWARENESS_RADIUS = agent.type == AgentInfo.AgentType.CARNIVORE ? 5.0 : 7.5;
                         int screenRadius = (int) (SPATIAL_AWARENESS_RADIUS / 200.0 * getWidth());
                         int centerX = x + AGENT_SIZE / 2;
                         int centerY = y + AGENT_SIZE / 2;
 
-                        // Desenha círculo preenchido com transparência muito leve
+                        // Desenha círculo de percepção com transparência
                         Color awarenessColor = agent.type == AgentInfo.AgentType.CARNIVORE ? new Color(255, 0, 0, 15) : // Vermelho
-                                                                                                                        // muito
                                                                                                                         // transparente
                                                                                                                         // para
                                                                                                                         // carnívoros
-                                new Color(0, 0, 255, 15); // Azul muito transparente para herbívoros
+                                new Color(0, 0, 255, 15); // Azul transparente para herbívoros
                         g2d.setColor(awarenessColor);
                         g2d.fillOval(centerX - screenRadius, centerY - screenRadius,
                                 screenRadius * 2, screenRadius * 2);
 
-                        // Desenha contorno do círculo
+                        // Desenha contorno do círculo de percepção
                         Color outlineColor = agent.type == AgentInfo.AgentType.CARNIVORE ? new Color(255, 0, 0, 50) : // Vermelho
                                                                                                                       // semi-transparente
                                                                                                                       // para
@@ -242,17 +340,16 @@ public class SimulationGUI extends JFrame {
                                 new Color(0, 0, 255, 50); // Azul semi-transparente para herbívoros
                         g2d.setColor(outlineColor);
                         g2d.setStroke(new BasicStroke(1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_BEVEL,
-                                0, new float[] { 5 }, 0)); // Linha tracejada
+                                0, new float[] { 5 }, 0)); // Linha pontilhada
                         g2d.drawOval(centerX - screenRadius, centerY - screenRadius,
                                 screenRadius * 2, screenRadius * 2);
 
-                        // Parâmetros do campo de visão
-                        double FOV_ANGLE = agent.type == AgentInfo.AgentType.CARNIVORE ? Math.PI / 1.5 : Math.PI / 2; // 120
-                                                                                                                      // ou
-                                                                                                                      // 90
-                                                                                                                      // graus
-                        double FOV_RANGE = agent.type == AgentInfo.AgentType.CARNIVORE ? 17.5 : 10.0; // Igual ao
-                                                                                                      // HUNTING_RADIUS
+                        // Configuração do campo de visão
+                        double FOV_ANGLE = agent.type == AgentInfo.AgentType.CARNIVORE ? Math.PI / 1.5 : // 120 graus
+                                                                                                         // para
+                                                                                                         // carnívoros
+                                Math.PI / 2; // 90 graus para herbívoros
+                        double FOV_RANGE = agent.type == AgentInfo.AgentType.CARNIVORE ? 17.5 : 10.0;
 
                         // Converte alcance do campo de visão para coordenadas da tela
                         int fovRange = (int) (FOV_RANGE / 90.0 * getWidth());
@@ -264,7 +361,7 @@ public class SimulationGUI extends JFrame {
                         int[] xPoints = new int[3];
                         int[] yPoints = new int[3];
 
-                        // Ponto central
+                        // Ponto central do cone
                         xPoints[0] = centerX;
                         yPoints[0] = centerY;
 
@@ -276,16 +373,16 @@ public class SimulationGUI extends JFrame {
                         xPoints[2] = centerX + (int) (Math.cos(rightAngle) * fovRange);
                         yPoints[2] = centerY + (int) (Math.sin(rightAngle) * fovRange);
 
-                        // Desenha cone de visão com cor apropriada
+                        // Desenha área do campo de visão
                         Color fovColor = agent.type == AgentInfo.AgentType.CARNIVORE ? new Color(255, 0, 0, 30) : // Vermelho
-                                                                                                                  // semi-transparente
+                                                                                                                  // transparente
                                                                                                                   // para
                                                                                                                   // carnívoros
-                                new Color(0, 0, 255, 30); // Azul semi-transparente para herbívoros
+                                new Color(0, 0, 255, 30); // Azul transparente para herbívoros
                         g2d.setColor(fovColor);
                         g2d.fillPolygon(xPoints, yPoints, 3);
 
-                        // Desenha contorno do cone de visão
+                        // Desenha contorno do campo de visão
                         g2d.setColor(agent.type == AgentInfo.AgentType.CARNIVORE ? new Color(255, 0, 0, 100) : // Vermelho
                                                                                                                // mais
                                                                                                                // opaco
@@ -295,7 +392,7 @@ public class SimulationGUI extends JFrame {
                         g2d.setStroke(new BasicStroke(1.0f));
                         g2d.drawPolygon(xPoints, yPoints, 3);
 
-                        // Desenha indicador de direção
+                        // Desenha indicador de direção do agente
                         g2d.setColor(agent.type == AgentInfo.AgentType.CARNIVORE ? Color.RED : Color.BLUE);
                         g2d.setStroke(new BasicStroke(2.0f));
                         int directionLength = AGENT_SIZE / 2;
@@ -310,7 +407,7 @@ public class SimulationGUI extends JFrame {
                     drawEnergyBar(g2d, barX, barY, agent.energy);
                 }
 
-                // Desenha nome do agente
+                // Desenha identificação do agente
                 g2d.setFont(LABEL_FONT);
                 FontMetrics fm = g2d.getFontMetrics();
                 String label = agent.name;
@@ -323,13 +420,13 @@ public class SimulationGUI extends JFrame {
         private Color getAgentColor(AgentInfo.AgentType type) {
             switch (type) {
                 case PLANT:
-                    return new Color(0, 150, 0); // Verde mais brilhante
+                    return new Color(0, 150, 0); // Verde para plantas
                 case HERBIVORE:
-                    return new Color(0, 100, 255); // Azul mais brilhante
+                    return new Color(0, 100, 255); // Azul para herbívoros
                 case CARNIVORE:
-                    return new Color(255, 50, 50); // Vermelho mais brilhante
+                    return new Color(255, 50, 50); // Vermelho para carnívoros
                 default:
-                    return Color.GRAY;
+                    return Color.GRAY; // Cinza para outros tipos
             }
         }
 
@@ -338,7 +435,7 @@ public class SimulationGUI extends JFrame {
             g2d.setColor(Color.DARK_GRAY);
             g2d.fillRect(x, y, ENERGY_BAR_WIDTH, ENERGY_BAR_HEIGHT);
 
-            // Desenha nível de energia
+            // Desenha nível atual de energia
             Color energyColor = energy > 50 ? Color.GREEN : energy > 25 ? Color.YELLOW : Color.RED;
             g2d.setColor(energyColor);
             int energyWidth = (int) ((energy / 100.0) * ENERGY_BAR_WIDTH);
