@@ -2,25 +2,30 @@ package com.foodchain.agents;
 
 import com.foodchain.SimulationLauncher;
 
+import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.TickerBehaviour;
 import jade.domain.DFService;
 import jade.domain.FIPAException;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
+import jade.lang.acl.ACLMessage;
 
 public class CarnivoreAgent extends Agent {
     private Position position;
     private static final int MAX_ENERGY = 100;
     private int energy = MAX_ENERGY;
+    private static final double MOVEMENT_RANGE = 5.0;
     private static final int ENERGY_CONSUMPTION = 2;
     private static final int PASSIVE_ENERGY_DECAY = 0;
     private static final double HUNTING_RADIUS = 17.5;
+    private static final int HUNTING_THRESHOLD = 60;
     private static final double FOV_ANGLE = Math.PI / 1.5;
     private static final double FOV_RANGE = HUNTING_RADIUS;
     private static final double SPATIAL_AWARENESS_RADIUS = 5.0;
 
     // Variáveis de comportamento de busca
+    private int ticksWithoutFood = 0;
     private double facingDirection = Math.random() * 2 * Math.PI; // Direção para onde o carnívoro está olhando
 
     // Método auxiliar para verificar se um ponto está dentro do alcance de detecção
@@ -87,6 +92,64 @@ public class CarnivoreAgent extends Agent {
         // Adiciona comportamento para mover, caçar e consumir energia
         addBehaviour(new TickerBehaviour(this, 1000) {
             protected void onTick() {
+
+                if (energy < HUNTING_THRESHOLD) {
+                    try {
+                        // Procura por herbívoros
+                        DFAgentDescription template = new DFAgentDescription();
+                        ServiceDescription sd = new ServiceDescription();
+                        sd.setType("herbivore");
+                        template.addServices(sd);
+                        DFAgentDescription[] result = DFService.search(myAgent, template);
+
+                        // Encontra o herbívoro mais próximo dentro do campo de visão
+                        double closestDistance = Double.MAX_VALUE;
+                        for (DFAgentDescription herbivore : result) {
+                            AID herbivoreAID = herbivore.getName();
+                            ACLMessage posRequest = new ACLMessage(ACLMessage.REQUEST);
+                            posRequest.addReceiver(herbivoreAID);
+                            posRequest.setContent("getPosition");
+                            send(posRequest);
+
+                            // Aguarda resposta com timeout
+                            ACLMessage reply = blockingReceive(1000);
+                            if (reply != null) {
+                                String[] coords = reply.getContent().split(",");
+                                Position herbivorePos = new Position(
+                                        Double.parseDouble(coords[0]),
+                                        Double.parseDouble(coords[1]));
+                                double distance = position.distanceTo(herbivorePos);
+                                // Considera apenas herbívoros dentro do campo de visão
+                                if (distance < closestDistance && isInFieldOfView(herbivorePos)) {
+                                    closestDistance = distance;
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+
+                // Move na direção que está olhando
+                double moveDistance = MOVEMENT_RANGE;
+                // Move mais rápido quando a energia está baixa
+                if (energy < 30) {
+                    moveDistance *= 1.5; // 50% mais rápido quando desesperado por comida
+                }
+
+                // Calcula nova posição
+                double newX = position.x + (moveDistance * Math.cos(facingDirection));
+                double newY = position.y + (moveDistance * Math.sin(facingDirection));
+
+                // Adiciona aleatoriedade apenas quando não está perseguindo presa
+                if (ticksWithoutFood > 0) {
+                    double randomAngle = (Math.random() - 0.5) * (FOV_ANGLE / 4);
+                    double adjustedDirection = facingDirection + randomAngle;
+                    newX += (Math.random() * MOVEMENT_RANGE / 6) * Math.cos(adjustedDirection);
+                    newY += (Math.random() * MOVEMENT_RANGE / 6) * Math.sin(adjustedDirection);
+                }
+
+                position = new Position(newX, newY);
 
                 // Aplica consumo de energia tanto do movimento quanto passivo
                 energy -= (ENERGY_CONSUMPTION + PASSIVE_ENERGY_DECAY);
