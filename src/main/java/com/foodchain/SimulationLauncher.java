@@ -1,5 +1,15 @@
 package com.foodchain;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import com.foodchain.agents.Position;
+import com.foodchain.gui.SimulationGUI;
+import com.foodchain.gui.SimulationGUI.AgentInfo;
+import com.foodchain.gui.SimulationGUI.AgentInfo.AgentType;
+
 import jade.core.Profile;
 import jade.core.ProfileImpl;
 import jade.core.Runtime;
@@ -8,7 +18,9 @@ import jade.wrapper.AgentController;
 import jade.wrapper.StaleProxyException;
 
 public class SimulationLauncher {
-
+    private static SimulationGUI gui;
+    private static final Random random = new Random();
+    private static List<AgentInfo> agentInfos = new CopyOnWriteArrayList<>();
     private static AgentContainer mainContainer;
 
     public static void main(String[] args) {
@@ -27,12 +39,54 @@ public class SimulationLauncher {
         mainContainer = runtime.createMainContainer(profile);
 
         try {
-            // Create at least one agent to test
-            AgentController testAgent = mainContainer.createNewAgent(
-                    "TestAgent",
-                    "com.foodchain.agents.PlantAgent",
-                    new Object[] {});
-            testAgent.start();
+            // Cria os agentes
+            List<Position> occupiedPositions = new ArrayList<>();
+            double MIN_SPAWN_DISTANCE = 20.0; // Distância mínima entre agentes ao nascer
+
+            // Plantas - espalhadas pelo espaço
+            for (int i = 0; i < 15; i++) {
+                Position pos;
+                boolean validPosition;
+                int attempts = 0;
+                do {
+                    pos = new Position(
+                            5 + random.nextDouble() * 90,
+                            5 + random.nextDouble() * 90);
+                    validPosition = true;
+                    // Verifica distância de outros agentes
+                    for (Position occupied : occupiedPositions) {
+                        if (pos.distanceTo(occupied) < MIN_SPAWN_DISTANCE) {
+                            validPosition = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                } while (!validPosition && attempts < 50);
+
+                occupiedPositions.add(pos);
+                AgentInfo agentInfo = new AgentInfo("Plant" + i, pos, AgentType.PLANT, 100);
+                agentInfos.add(agentInfo);
+
+                AgentController plantAgent = mainContainer.createNewAgent(
+                        "Plant" + i,
+                        "com.foodchain.agents.PlantAgent",
+                        new Object[] { pos });
+                plantAgent.start();
+            }
+
+            // Inicia thread de atualização da interface gráfica
+            new Thread(() -> {
+                while (true) {
+                    try {
+                        // Atualiza a interface com as posições atuais dos agentes
+                        gui.updateAgentPositions(agentInfos);
+                        Thread.sleep(100); // Atualiza a cada 100ms
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
+
         } catch (StaleProxyException e) {
             e.printStackTrace();
         }
