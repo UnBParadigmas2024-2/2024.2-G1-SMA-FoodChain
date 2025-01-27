@@ -19,7 +19,10 @@ public class CarnivoreAgent extends Agent {
     private static final int ENERGY_CONSUMPTION = 2;
     private static final int PASSIVE_ENERGY_DECAY = 0;
     private static final double HUNTING_RADIUS = 17.5;
+    private static final double MELEE_RANGE = 12.0;
+    private static final int ENERGY_FROM_HERBIVORE = 70;
     private static final int HUNTING_THRESHOLD = 60;
+    private static final int DIRECTION_CHANGE_THRESHOLD = 5;
     private static final double FOV_ANGLE = Math.PI / 1.5;
     private static final double FOV_RANGE = HUNTING_RADIUS;
     private static final double SPATIAL_AWARENESS_RADIUS = 5.0;
@@ -130,6 +133,22 @@ public class CarnivoreAgent extends Agent {
                     }
                 }
 
+                // Sempre move se não estiver perseguindo presa
+                ticksWithoutFood++;
+
+                // Muda direção se ficar muito tempo sem encontrar comida
+                if (ticksWithoutFood >= DIRECTION_CHANGE_THRESHOLD) {
+                    // Quando a energia está baixa, faz mudanças menores de direção para manter
+                    // perseguição mais consistente
+                    if (energy < 30) {
+                        facingDirection += (Math.random() - 0.5) * Math.PI / 2; // Muda até ±45 graus
+                    } else {
+                        facingDirection = Math.random() * 2 * Math.PI; // Direção completamente aleatória
+                    }
+                    facingDirection = facingDirection % (2 * Math.PI);
+                    ticksWithoutFood = 0;
+                }
+
                 // Move na direção que está olhando
                 double moveDistance = MOVEMENT_RANGE;
                 // Move mais rápido quando a energia está baixa
@@ -148,6 +167,21 @@ public class CarnivoreAgent extends Agent {
                     newX += (Math.random() * MOVEMENT_RANGE / 6) * Math.cos(adjustedDirection);
                     newY += (Math.random() * MOVEMENT_RANGE / 6) * Math.sin(adjustedDirection);
                 }
+
+                // Verifica se vai bater em uma borda e muda direção se necessário
+                if (newX <= 5 || newX >= 95 || newY <= 5 || newY >= 95) {
+                    // Rotaciona direção em 90-180 graus ao bater na borda
+                    facingDirection += Math.PI * (0.5 + Math.random() * 0.5);
+                    facingDirection = facingDirection % (2 * Math.PI);
+
+                    // Recalcula posição com nova direção
+                    newX = position.x + (moveDistance * Math.cos(facingDirection));
+                    newY = position.y + (moveDistance * Math.sin(facingDirection));
+                }
+
+                // Mantém dentro dos limites
+                newX = Math.max(5, Math.min(95, newX));
+                newY = Math.max(5, Math.min(95, newY));
 
                 position = new Position(newX, newY);
 
