@@ -211,6 +211,17 @@ public class HerbivoreAgent extends Agent {
                                                 newPosition.x, newPosition.y));
                                     }
 
+                                    // Verifica se acabou de atingir energia máxima vindo de menos de 100
+                                    if (energy == 100 && reproductionCooldown <= 0 && age >= MIN_AGE_FOR_REPRODUCTION) {
+                                        // Reproduz após atingir energia máxima
+                                        energy -= REPRODUCTION_ENERGY_COST; // Deduz custo de energia
+                                        reproductionCooldown = REPRODUCTION_COOLDOWN; // Reinicia tempo de espera
+                                        Position newPosition = new Position(
+                                                position.x + (Math.random() * 20 - 10),
+                                                position.y + (Math.random() * 20 - 10));
+                                        SimulationLauncher.createNewAgent("Herbivore", newPosition);
+                                    }
+
                                     // Atualiza variáveis de comportamento de busca
                                     ticksWithoutFood = 0;
                                     foundFood = true;
