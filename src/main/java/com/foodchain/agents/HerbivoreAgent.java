@@ -1,27 +1,30 @@
 package com.foodchain.agents;
 
-import com.foodchain.SimulationLauncher;
-
-import jade.core.AID;
 import jade.core.Agent;
-import jade.core.behaviours.CyclicBehaviour;
 import jade.core.behaviours.TickerBehaviour;
 import jade.domain.DFService;
-import jade.domain.FIPAException;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
+import jade.domain.FIPAException;
+import jade.core.AID;
 import jade.lang.acl.ACLMessage;
+import com.foodchain.SimulationLauncher;
+import java.util.logging.Logger;
+import jade.core.behaviours.CyclicBehaviour;
 
 public class HerbivoreAgent extends Agent {
     private Position position;
     private int energy = 100;
+    private static final Logger logger = Logger.getLogger(HerbivoreAgent.class.getName());
     private static final double MOVEMENT_RANGE = 5.0;
     private static final int ENERGY_CONSUMPTION = 3;
     private static final double HUNTING_RADIUS = 10.0;
+    private static final int ENERGY_FROM_PLANT = 75;
     private static final int DIRECTION_CHANGE_THRESHOLD = 5; // Ticks sem encontrar comida antes de mudar direção
     private static final double FOV_ANGLE = Math.PI / 2; // Campo de visão de 90 graus
     private static final double FOV_RANGE = HUNTING_RADIUS; // Mesmo alcance que o raio de caça
     private static final double SPATIAL_AWARENESS_RADIUS = 7.5; // Reduzido de 15.0
+    private static final int HUNTING_THRESHOLD = 90;
     private static final int FEEDING_COOLDOWN = 5; // Aumentado de 3 para 5 ticks
     private static final double MIN_DISTANCE_TO_LAST_PLANT = 15.0; // Distância mínima antes de se alimentar da mesma
                                                                    // planta novamente
@@ -31,6 +34,13 @@ public class HerbivoreAgent extends Agent {
     private double facingDirection = Math.random() * 2 * Math.PI; // Direção para onde o herbívoro está olhando
     private int feedingCooldown = 0; // Contador de tempo de espera para alimentação
     private Position lastFeedingPosition = null; // Última posição onde se alimentou
+
+    // Constantes para reprodução
+    private static final int REPRODUCTION_COOLDOWN = 100; // Ticks de espera entre reproduções
+    private static final int REPRODUCTION_ENERGY_COST = 40; // Custo de energia para reproduzir
+    private static final int MIN_AGE_FOR_REPRODUCTION = 50; // Ticks mínimos antes da primeira reprodução
+    private int reproductionCooldown = REPRODUCTION_COOLDOWN;
+    private int age = 0;
 
     // Método auxiliar para verificar se um ponto está dentro do alcance de detecção
     // (cone de visão ou raio de percepção)
@@ -43,6 +53,9 @@ public class HerbivoreAgent extends Agent {
             double dx = target.x - position.x;
             double dy = target.y - position.y;
             facingDirection = Math.atan2(dy, dx);
+            logger.info(String.format(
+                    "Herbívoro %s detectou planta no raio de percepção, virando para encará-la",
+                    getLocalName()));
             return true;
         }
 
@@ -78,6 +91,8 @@ public class HerbivoreAgent extends Agent {
 
         // Atualiza posição e energia iniciais
         SimulationLauncher.updateAgentInfo(getLocalName(), position, energy, facingDirection);
+        logger.info(String.format("Herbívoro %s inicializado na posição (%.2f, %.2f) com energia %d",
+                getLocalName(), position.x, position.y, energy));
 
         // Registra no Facilitador de Diretório
         DFAgentDescription dfd = new DFAgentDescription();
@@ -89,14 +104,24 @@ public class HerbivoreAgent extends Agent {
 
         try {
             DFService.register(this, dfd);
+            logger.info(String.format("Herbívoro %s registrado no Facilitador de Diretório", getLocalName()));
         } catch (FIPAException e) {
-            e.printStackTrace();
+            logger.severe(String.format("Herbívoro %s falhou ao registrar no Facilitador de Diretório: %s",
+                    getLocalName(), e.getMessage()));
         }
 
         // Adiciona comportamento para mover, caçar e consumir energia
         addBehaviour(new TickerBehaviour(this, 1000) {
             protected void onTick() {
+                Position oldPos = new Position(position.x, position.y);
+                int oldEnergy = energy;
                 boolean foundFood = false;
+
+                // Antes do código de movimento, incrementa a idade
+                age++;
+                if (reproductionCooldown > 0) {
+                    reproductionCooldown--;
+                }
 
                 // Tenta encontrar e comer plantas
                 try {
@@ -136,13 +161,17 @@ public class HerbivoreAgent extends Agent {
                                     }
                                 }
                             } catch (NumberFormatException e) {
-                                e.printStackTrace();
+                                logger.warning(
+                                        "Formato inválido de posição recebido da planta: " + reply.getContent());
                             }
                         }
                     }
 
                     // Se encontrou uma planta dentro do alcance, come ela
                     if (closestPlantAID != null) {
+                        logger.info(String.format("Herbívoro %s encontrou planta em (%.2f, %.2f), distância: %.2f",
+                                getLocalName(), closestPlantPos.x, closestPlantPos.y, closestDistance));
+
                         if (closestDistance <= SPATIAL_AWARENESS_RADIUS && feedingCooldown <= 0 &&
                                 (lastFeedingPosition == null ||
                                         position.distanceTo(lastFeedingPosition) >= MIN_DISTANCE_TO_LAST_PLANT)) {
@@ -161,6 +190,26 @@ public class HerbivoreAgent extends Agent {
                                     energy += energyToConsume;
                                     if (energy > 100)
                                         energy = 100;
+                                    logger.info(
+                                            String.format(
+                                                    "Herbívoro %s consumiu %d de energia da planta, nova energia: %d",
+                                                    getLocalName(), energyToConsume, energy));
+
+                                    // Verifica se acabou de atingir energia máxima vindo de menos de 100
+                                    if (oldEnergy < 100 && energy == 100 &&
+                                            reproductionCooldown <= 0 &&
+                                            age >= MIN_AGE_FOR_REPRODUCTION) {
+                                        // Reproduz após atingir energia máxima
+                                        energy -= REPRODUCTION_ENERGY_COST; // Deduz custo de energia
+                                        reproductionCooldown = REPRODUCTION_COOLDOWN; // Reinicia tempo de espera
+                                        Position newPosition = new Position(
+                                                position.x + (Math.random() * 20 - 10),
+                                                position.y + (Math.random() * 20 - 10));
+                                        SimulationLauncher.createNewAgent("Herbivore", newPosition);
+                                        logger.info(String.format("Herbívoro %s se reproduziu em (%.2f, %.2f)",
+                                                getLocalName(),
+                                                newPosition.x, newPosition.y));
+                                    }
 
                                     // Atualiza variáveis de comportamento de busca
                                     ticksWithoutFood = 0;
@@ -237,6 +286,10 @@ public class HerbivoreAgent extends Agent {
                                         Math.max(5, Math.min(95, position.x + moveX)),
                                         Math.max(5, Math.min(95, position.y + moveY)));
 
+                                logger.info(String.format(
+                                        "Herbívoro %s movendo em direção à planta em (%.2f, %.2f)",
+                                        getLocalName(), closestPlantPos.x, closestPlantPos.y));
+
                                 // Reinicia contagem sem comida já que está perseguindo ativamente
                                 ticksWithoutFood = 0;
                                 foundFood = true;
@@ -259,7 +312,7 @@ public class HerbivoreAgent extends Agent {
                         return;
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    logger.warning("Erro durante a busca: " + e.getMessage());
                 }
 
                 // Diminui tempo de espera para alimentação
@@ -280,6 +333,8 @@ public class HerbivoreAgent extends Agent {
                             facingDirection = Math.random() * 2 * Math.PI; // Direção completamente aleatória
                         }
                         ticksWithoutFood = 0;
+                        logger.info(String.format("Herbívoro %s mudando direção de busca por falta de comida",
+                                getLocalName()));
                     }
 
                     // Move na direção que está olhando
@@ -308,6 +363,7 @@ public class HerbivoreAgent extends Agent {
 
                         newX = position.x + (moveDistance * Math.cos(facingDirection));
                         newY = position.y + (moveDistance * Math.sin(facingDirection));
+                        logger.info(String.format("Herbívoro %s bateu na borda, mudando direção", getLocalName()));
                     }
 
                     // Mantém dentro dos limites
@@ -321,13 +377,23 @@ public class HerbivoreAgent extends Agent {
                 energy -= ENERGY_CONSUMPTION;
                 if (energy <= 0) {
                     energy = 0;
+                    logger.warning(String.format("Herbívoro %s morreu de fome!", myAgent.getLocalName()));
+                    // Atualiza GUI uma última vez antes de morrer
+                    SimulationLauncher.updateAgentInfo(myAgent.getLocalName(), position, energy, facingDirection);
                     try {
                         DFService.deregister(myAgent);
                     } catch (FIPAException e) {
-                        e.printStackTrace();
+                        logger.severe("Erro ao remover registro do herbívoro: " + e.getMessage());
                     }
                     myAgent.doDelete();
                     return;
+                }
+
+                logger.info(String.format("Herbívoro %s moveu de (%.2f, %.2f) para (%.2f, %.2f), energia: %d -> %d",
+                        getLocalName(), oldPos.x, oldPos.y, position.x, position.y, oldEnergy, energy));
+
+                if (energy <= 0) {
+                    logger.warning(String.format("Herbívoro %s está criticamente baixo de energia!", getLocalName()));
                 }
 
                 // Atualiza GUI com nova posição e energia
@@ -348,10 +414,14 @@ public class HerbivoreAgent extends Agent {
                         case "getPosition":
                             reply.setContent(position.x + "," + position.y);
                             send(reply);
+                            logger.fine(String.format("Herbívoro %s enviou posição (%.2f, %.2f) para %s",
+                                    getLocalName(), position.x, position.y, msg.getSender().getLocalName()));
                             break;
                         case "getEnergy":
                             reply.setContent(String.valueOf(energy));
                             send(reply);
+                            logger.fine(String.format("Herbívoro %s enviou energia %d para %s",
+                                    getLocalName(), energy, msg.getSender().getLocalName()));
                             break;
                         default:
                             if (msg.getContent().startsWith("consume,")) {
@@ -360,15 +430,20 @@ public class HerbivoreAgent extends Agent {
                                 energy -= energyToConsume;
                                 if (energy <= 0) {
                                     energy = 0;
+                                    logger.info(String.format("Herbívoro %s foi consumido por um carnívoro!",
+                                            myAgent.getLocalName()));
+                                    // Atualiza GUI uma última vez antes de morrer
                                     SimulationLauncher.updateAgentInfo(myAgent.getLocalName(), position, energy,
                                             facingDirection);
                                     try {
                                         DFService.deregister(myAgent);
                                     } catch (FIPAException e) {
-                                        e.printStackTrace();
+                                        logger.severe("Erro ao remover registro do herbívoro: " + e.getMessage());
                                     }
                                     myAgent.doDelete();
                                 } else {
+                                    logger.info(String.format("Herbívoro %s energia consumida: %d, restante: %d",
+                                            myAgent.getLocalName(), energyToConsume, energy));
                                     SimulationLauncher.updateAgentInfo(myAgent.getLocalName(), position, energy,
                                             facingDirection);
                                 }
@@ -380,6 +455,10 @@ public class HerbivoreAgent extends Agent {
                 }
             }
         });
+
+        // Reinicia tempo de espera para reprodução e idade
+        reproductionCooldown = REPRODUCTION_COOLDOWN;
+        age = 0;
     }
 
     public Position getPosition() {
@@ -387,7 +466,11 @@ public class HerbivoreAgent extends Agent {
     }
 
     public void setPosition(Position position) {
+        Position oldPos = this.position;
         this.position = position;
+        logger.info(String.format("Herbívoro %s posição atualizada: (%.2f, %.2f) -> (%.2f, %.2f)",
+                getLocalName(), oldPos.x, oldPos.y, position.x, position.y));
+        // Atualiza GUI quando a posição muda
         SimulationLauncher.updateAgentInfo(getLocalName(), position, energy, facingDirection);
     }
 
@@ -396,7 +479,11 @@ public class HerbivoreAgent extends Agent {
     }
 
     public void setEnergy(int energy) {
+        int oldEnergy = this.energy;
         this.energy = energy;
+        logger.info(String.format("Herbívoro %s energia alterada: %d -> %d",
+                getLocalName(), oldEnergy, energy));
+        // Atualiza GUI quando a energia muda
         SimulationLauncher.updateAgentInfo(getLocalName(), position, energy, facingDirection);
     }
 }
