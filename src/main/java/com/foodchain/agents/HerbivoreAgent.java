@@ -1,16 +1,15 @@
 package com.foodchain.agents;
 
-import com.foodchain.SimulationLauncher;
-
-import jade.core.AID;
 import jade.core.Agent;
-import jade.core.behaviours.CyclicBehaviour;
 import jade.core.behaviours.TickerBehaviour;
 import jade.domain.DFService;
-import jade.domain.FIPAException;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
+import jade.domain.FIPAException;
+import jade.core.AID;
 import jade.lang.acl.ACLMessage;
+import com.foodchain.SimulationLauncher;
+import jade.core.behaviours.CyclicBehaviour;
 
 public class HerbivoreAgent extends Agent {
     private Position position;
@@ -31,6 +30,13 @@ public class HerbivoreAgent extends Agent {
     private double facingDirection = Math.random() * 2 * Math.PI; // Direção para onde o herbívoro está olhando
     private int feedingCooldown = 0; // Contador de tempo de espera para alimentação
     private Position lastFeedingPosition = null; // Última posição onde se alimentou
+
+    // Constantes para reprodução
+    private static final int REPRODUCTION_COOLDOWN = 100; // Ticks de espera entre reproduções
+    private static final int REPRODUCTION_ENERGY_COST = 40; // Custo de energia para reproduzir
+    private static final int MIN_AGE_FOR_REPRODUCTION = 50; // Ticks mínimos antes da primeira reprodução
+    private int reproductionCooldown = REPRODUCTION_COOLDOWN;
+    private int age = 0;
 
     // Método auxiliar para verificar se um ponto está dentro do alcance de detecção
     // (cone de visão ou raio de percepção)
@@ -98,6 +104,11 @@ public class HerbivoreAgent extends Agent {
             protected void onTick() {
                 boolean foundFood = false;
 
+                age++;
+                if (reproductionCooldown > 0) {
+                    reproductionCooldown--;
+                }
+
                 // Tenta encontrar e comer plantas
                 try {
                     // Procura por plantas
@@ -161,6 +172,17 @@ public class HerbivoreAgent extends Agent {
                                     energy += energyToConsume;
                                     if (energy > 100)
                                         energy = 100;
+
+                                    // Verifica se acabou de atingir energia máxima vindo de menos de 100
+                                    if (energy == 100 && reproductionCooldown <= 0 && age >= MIN_AGE_FOR_REPRODUCTION) {
+                                        // Reproduz após atingir energia máxima
+                                        energy -= REPRODUCTION_ENERGY_COST; // Deduz custo de energia
+                                        reproductionCooldown = REPRODUCTION_COOLDOWN; // Reinicia tempo de espera
+                                        Position newPosition = new Position(
+                                                position.x + (Math.random() * 20 - 10),
+                                                position.y + (Math.random() * 20 - 10));
+                                        SimulationLauncher.createNewAgent("Herbivore", newPosition);
+                                    }
 
                                     // Atualiza variáveis de comportamento de busca
                                     ticksWithoutFood = 0;
@@ -380,6 +402,10 @@ public class HerbivoreAgent extends Agent {
                 }
             }
         });
+
+        // Reinicia tempo de espera para reprodução e idade
+        reproductionCooldown = REPRODUCTION_COOLDOWN;
+        age = 0;
     }
 
     public Position getPosition() {

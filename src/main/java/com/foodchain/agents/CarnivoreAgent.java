@@ -1,15 +1,14 @@
 package com.foodchain.agents;
 
-import com.foodchain.SimulationLauncher;
-
-import jade.core.AID;
 import jade.core.Agent;
 import jade.core.behaviours.TickerBehaviour;
 import jade.domain.DFService;
-import jade.domain.FIPAException;
 import jade.domain.FIPAAgentManagement.DFAgentDescription;
 import jade.domain.FIPAAgentManagement.ServiceDescription;
+import jade.domain.FIPAException;
+import jade.core.AID;
 import jade.lang.acl.ACLMessage;
+import com.foodchain.SimulationLauncher;
 
 public class CarnivoreAgent extends Agent {
     private Position position;
@@ -30,6 +29,13 @@ public class CarnivoreAgent extends Agent {
     // Variáveis de comportamento de busca
     private int ticksWithoutFood = 0;
     private double facingDirection = Math.random() * 2 * Math.PI; // Direção para onde o carnívoro está olhando
+
+    // Constantes para reprodução
+    private static final int REPRODUCTION_COOLDOWN = 150; // Tempo de espera maior que os herbívoros
+    private static final int REPRODUCTION_ENERGY_COST = 50; // Custo de energia maior que os herbívoros
+    private static final int MIN_AGE_FOR_REPRODUCTION = 75; // Tempo de maturidade maior que os herbívoros
+    private int reproductionCooldown = REPRODUCTION_COOLDOWN;
+    private int age = 0;
 
     // Método auxiliar para verificar se um ponto está dentro do alcance de detecção
     // (cone de visão ou raio de percepção)
@@ -95,6 +101,11 @@ public class CarnivoreAgent extends Agent {
         // Adiciona comportamento para mover, caçar e consumir energia
         addBehaviour(new TickerBehaviour(this, 1000) {
             protected void onTick() {
+                age++;
+                if (reproductionCooldown > 0) {
+                    reproductionCooldown--;
+                }
+
                 if (energy < HUNTING_THRESHOLD) {
                     try {
                         // Procura por herbívoros
@@ -169,6 +180,18 @@ public class CarnivoreAgent extends Agent {
                                         killMessage.setContent("die");
                                         send(killMessage);
                                         ticksWithoutFood = 0;
+
+                                        // Reproduz após caçada bem-sucedida se as condições forem atendidas
+                                        if (reproductionCooldown <= 0 &&
+                                                age >= MIN_AGE_FOR_REPRODUCTION &&
+                                                energy >= REPRODUCTION_ENERGY_COST) {
+                                            energy -= REPRODUCTION_ENERGY_COST; // Deduz custo de energia
+                                            reproductionCooldown = REPRODUCTION_COOLDOWN; // Reinicia tempo de espera
+                                            Position newPosition = new Position(
+                                                    position.x + (Math.random() * 20 - 10),
+                                                    position.y + (Math.random() * 20 - 10));
+                                            SimulationLauncher.createNewAgent("Carnivore", newPosition);
+                                        }
                                     }
                                 }
                             } else {
