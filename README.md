@@ -1,4 +1,4 @@
-# 2023.2_G1_SMA_FoodChain
+# 2024.2_G1_SMA_FoodChain
 
 **Disciplina**: FGA0210 - PARADIGMAS DE PROGRAMAÇÃO - T01
 
